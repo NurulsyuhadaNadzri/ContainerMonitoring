@@ -92,17 +92,22 @@ st.markdown("""
 @st.cache_data(show_spinner="Reading shipment workbook...")
 def read_workbook(data: bytes) -> pd.DataFrame:
     excel = pd.ExcelFile(io.BytesIO(data))
-    # Dashboard source: BRANCHES only. MAY-JULY is intentionally excluded.
-    if "BRANCHES" not in excel.sheet_names:
-        raise ValueError("BRANCHES worksheet was not found in the Excel workbook.")
-    df = pd.read_excel(
-        excel,
-        sheet_name="BRANCHES",
-        dtype={"CNTNR NO": str, "BL NO": str, "PO NO": str},
-    )
-    df.columns = [str(c).strip().upper() for c in df.columns]
-    df = df.replace(r"^\s*$", pd.NA, regex=True).dropna(how="all")
-    df["SOURCE SHEET"] = "BRANCHES"
+    # Combine both worksheets; the source label is kept internally but not displayed.
+    sheets = ["MAY-JULY", "BRANCHES"]
+    missing = [name for name in sheets if name not in excel.sheet_names]
+    if missing:
+        raise ValueError(f"Required worksheet(s) not found: {', '.join(missing)}")
+    frames = []
+    for sheet in sheets:
+        part = pd.read_excel(
+            excel, sheet_name=sheet,
+            dtype={"CNTNR NO": str, "BL NO": str, "PO NO": str},
+        )
+        part.columns = [str(c).strip().upper() for c in part.columns]
+        part = part.replace(r"^\s*$", pd.NA, regex=True).dropna(how="all")
+        part["SOURCE SHEET"] = sheet
+        frames.append(part)
+    df = pd.concat(frames, ignore_index=True, sort=False)
     if "CNTNR NO" not in df.columns:
         raise ValueError("CNTNR NO column is missing.")
     df["CNTNR NO"] = df["CNTNR NO"].astype("string").str.strip()
