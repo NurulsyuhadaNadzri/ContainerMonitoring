@@ -92,19 +92,17 @@ st.markdown("""
 @st.cache_data(show_spinner="Reading shipment workbook...")
 def read_workbook(data: bytes) -> pd.DataFrame:
     excel = pd.ExcelFile(io.BytesIO(data))
-    frames = []
-    for sheet in ("MAY-JULY", "BRANCHES"):
-        if sheet not in excel.sheet_names:
-            continue
-        part = pd.read_excel(excel, sheet_name=sheet, dtype={"CNTNR NO": str, "BL NO": str, "PO NO": str})
-        part.columns = [str(c).strip().upper() for c in part.columns]
-        # Remove fully empty Excel rows (including rows containing only whitespace).
-        part = part.replace(r"^\s*$", pd.NA, regex=True).dropna(how="all")
-        part["SOURCE SHEET"] = sheet
-        frames.append(part)
-    if not frames:
-        raise ValueError("Could not find MAY-JULY or BRANCHES worksheets.")
-    df = pd.concat(frames, ignore_index=True)
+    # Dashboard source: BRANCHES only. MAY-JULY is intentionally excluded.
+    if "BRANCHES" not in excel.sheet_names:
+        raise ValueError("BRANCHES worksheet was not found in the Excel workbook.")
+    df = pd.read_excel(
+        excel,
+        sheet_name="BRANCHES",
+        dtype={"CNTNR NO": str, "BL NO": str, "PO NO": str},
+    )
+    df.columns = [str(c).strip().upper() for c in df.columns]
+    df = df.replace(r"^\s*$", pd.NA, regex=True).dropna(how="all")
+    df["SOURCE SHEET"] = "BRANCHES"
     if "CNTNR NO" not in df.columns:
         raise ValueError("CNTNR NO column is missing.")
     df["CNTNR NO"] = df["CNTNR NO"].astype("string").str.strip()
