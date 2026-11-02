@@ -348,169 +348,140 @@ def category_summary(frame, field):
 
 monitor, overview, risks, leadtime, comparison, rootcause, records = st.tabs(["📦 Container Monitoring", "📊 Overview", "⚠️ DEM / DET analysis", "⏱️ Lead-Time Analysis", "📈 Performance Comparison", "🔍 Root-Cause Analysis", "🔎 Shipment explorer"])
 
+# Optional vessel register: map BL numbers to actual vessel names.
+# The original Excel has VESSEL ETA but does not have a vessel-name column.
+VESSEL_MAP_FILE = ROOT / "vessel_mapping.csv"
+if VESSEL_MAP_FILE.exists():
+    try:
+        vessel_map = pd.read_csv(VESSEL_MAP_FILE, dtype=str).fillna("")
+        vessel_map.columns = vessel_map.columns.str.strip().str.upper()
+        if not {"BL NO", "VESSEL NAME"}.issubset(vessel_map.columns):
+            raise ValueError("vessel_mapping.csv requires BL NO and VESSEL NAME columns")
+        vessel_map["BL NO"] = vessel_map["BL NO"].str.strip().str.upper()
+        vessel_map["VESSEL NAME"] = vessel_map["VESSEL NAME"].str.strip()
+        mapping = (vessel_map[vessel_map["VESSEL NAME"] != ""]
+                   .drop_duplicates("BL NO").set_index("BL NO")["VESSEL NAME"].to_dict())
+    except Exception as exc:
+        st.error(f"Vessel mapping error: {exc}")
+        mapping = {}
+else:
+    mapping = {}
+
+# Vessel identity is not inferable from ETA. Use a clearly named BL-based
+# provisional shipment group when no actual vessel name is mapped.
+working = f.copy()
+working["BL KEY"] = working["BL NO"].astype(str).str.strip().str.upper()
+working["VESSEL NAME"] = working["BL KEY"].map(mapping)
+working["VESSEL GROUP"] = working.apply(
+    lambda r: r["VESSEL NAME"] if pd.notna(r["VESSEL NAME"]) and r["VESSEL NAME"]
+    else ("BL " + r["BL KEY"] if r["BL KEY"] and r["BL KEY"].lower() not in ("nan", "none")
+          else "Unassigned · " + str(r["CNTNR NO"])), axis=1)
+
 with monitor:
-    st.subheader("Container Monitoring")
-
-    opts = sorted(f["CNTNR NO"].dropna().astype(str).unique().tolist())
-    selected = st.selectbox("Container number", opts, index=None,
-                            placeholder="Search or select container number...", key="monitor_container")
-    if selected:
-        match = f.loc[f["CNTNR NO"].astype(str) == selected]
-        if len(match) > 1:
-            record_idx = st.selectbox("Shipment record", range(len(match)), format_func=lambda i:
-                f"{match.iloc[i]['SOURCE SHEET']} · BL {match.iloc[i]['BL NO']} · ETA {match.iloc[i]['VESSEL ETA'].strftime('%d %b %Y') if pd.notna(match.iloc[i]['VESSEL ETA']) else '—'}", key="monitor_record")
-        else:
-            record_idx = 0
-        r = match.iloc[record_idx]
-
-        def date_label(v):
-            return v.strftime("%d %b %Y") if pd.notna(v) else "Not recorded"
-
-        def elapsed(a, b):
-            if pd.isna(a) or pd.isna(b):
-                return "—"
-            n = (b - a).days
-            return f"{n} days" if n >= 0 else "Check dates"
-
-        def allowance(v):
-            return f"{v:g} days" if pd.notna(v) and v >= 0 else "Not recorded"
-
-        def deadline_status(deadline, milestone, dem=False):
-            if pd.isna(deadline):
-                return "Deadline unavailable", "unknown"
-            if pd.notna(milestone):
-                if dem:
-                    return "Delivered", "unknown"
-                if milestone.normalize() <= deadline.normalize():
-                    return "Empty return recorded by deadline", "safe"
-                return "Empty return recorded after deadline", "danger"
-            days = (deadline.normalize() - pd.Timestamp.now().normalize()).days
-            if days < 0:
-                return f"{abs(days)} days overdue · check status", "danger"
-            if days == 0:
-                return "Due today", "warning"
-            if days <= 3:
-                return f"{days} days remaining · follow up", "warning"
-            return f"{days} days remaining", "safe"
-
-        stages = [("ETA", "VESSEL ETA"), ("Delivered", "DELIVERED"),
-                  ("RFC", "RFC"), ("Empty Return", "MT RETURN")]
-        # Stop the ship at the latest *contiguously confirmed* process milestone.
-        # Never infer a stage from elapsed time or from a later date if an earlier stage is missing.
+    st.subheader("Vessel Monitoring")
+    choices = sorted(working["VESSEL GROUP"].unique().tolist())
+    selected_vessel = st.selectbox("Vessel / BL shipment group", choices, index=None,
+                                   placeholder="Search vessel or BL number...", key="vessel_monitor")
+    if selected_vessel:
+        subset = working[working["VESSEL GROUP"] == selected_vessel].copy()
+        # Deduplicate overlapping records from MAY-JULY and BRANCHES. Keep the
+        # furthest confirmed milestones, without counting a container twice.
         today = pd.Timestamp.now().normalize()
-        completed_stage = -1
-        for stage_idx, (_, stage_col) in enumerate(stages):
-            stage_date = r[stage_col]
-            if pd.isna(stage_date) or stage_date.normalize() > today:
-                break
-            completed_stage = stage_idx
-        stage_positions = [12.5, 37.5, 62.5, 87.5]  # centres of four equal columns
-        vessel_position = stage_positions[max(0, completed_stage)]
-        stage_name = stages[completed_stage][0] if completed_stage >= 0 else "Awaiting ETA"
-        stage_summary = (
-            f"Current confirmed stage: {stage_name}"
-            if completed_stage >= 0 else "Awaiting ETA / ETA not recorded"
-        )
-        has_later_stage = any(
-            pd.notna(r[col]) and r[col].normalize() <= today
-            for _, col in stages[completed_stage + 1:]
-        )
-        if has_later_stage and completed_stage < 0:
-            stage_summary += " · Check missing or inconsistent dates"
-        elif has_later_stage and completed_stage < 3:
-            stage_summary += " · Later milestone recorded; check missing intermediate dates"
-
-        steps = []
-        for i, (label, col) in enumerate(stages):
-            duration = "Start" if i == 0 else elapsed(r[stages[i-1][1]], r[col])
-            dot_class = " reached" if i <= completed_stage else ""
-            steps.append(f'<div class="ffm-journey-step"><div class="ffm-milestone{dot_class}"></div>'
-                         f'<div class="ffm-step-label">{label}</div>'
-                         f'<div class="ffm-step-date">{html.escape(date_label(r[col]))}</div>'
-                         f'<div class="ffm-step-days">{html.escape(duration)}</div></div>')
-
-        dem_status, dem_class = deadline_status(r["LAST DAY FT DEM"], r["DELIVERED"], dem=True)
-        det_status, det_class = deadline_status(r["LAST DAY FT DET"], r["MT RETURN"])
-        vessel_info = html.escape(str(r["DELIVERY LOC"]))
-        panel = f"""
-        <style>
-          .ffm-monitor-panel {{background:#fff; border:1px solid #dce7f2; border-radius:15px;
-             padding:22px 24px 19px; box-shadow:0 6px 24px rgba(13,51,84,.075); margin:10px 0 18px;}}
-          .ffm-panel-eyebrow {{font-size:11px;letter-spacing:.7px;font-weight:800;color:#607c95;}}
-          .ffm-panel-title {{font-size:20px;font-weight:750;color:#12395d;margin:10px 0 5px;}}
-          .ffm-panel-subtitle {{font-size:12px;color:#647c92;margin-bottom:18px;}}
-          .ffm-journey-wrap {{position:relative;margin-top:16px;}}
-          .ffm-journey {{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;position:relative;}}
-          .ffm-journey-step {{position:relative;padding:54px 8px 16px;min-width:0;text-align:center;}}
-          /* Only three connector segments between the four milestone circles. */
-          .ffm-journey-step:not(:last-child)::after {{content:"";position:absolute;top:12px;left:50%;width:100%;height:2px;background:#9cb8d5;z-index:0;}}
-          .ffm-milestone {{position:absolute;top:4px;left:50%;transform:translateX(-50%);width:18px;height:18px;border:3px solid #155caa;border-radius:50%;background:white;z-index:2;box-sizing:border-box;}}
-          .ffm-milestone.reached {{background:#155caa;box-shadow:inset 0 0 0 3px white;}}
-          .ffm-vessel {{position:absolute;top:-32px;left:{vessel_position}%;width:44px;height:28px;
-              transform:translateX(-50%);filter:drop-shadow(0 2px 2px rgba(9,54,96,.22));z-index:4;
-              animation:ffm-vessel-arrive .85s ease-out both;}}
-          @keyframes ffm-vessel-arrive {{from {{opacity:.35;transform:translate(-50%,-6px)}} to {{opacity:1;transform:translate(-50%,0)}}}}
-          .ffm-vessel svg {{width:44px;height:28px;display:block;}}
-          @media(prefers-reduced-motion:reduce) {{.ffm-vessel {{animation:none}}}}
-          .ffm-step-label {{font-size:12px;color:#4f6880;}}
-          .ffm-step-date {{font-size:17px;font-weight:750;color:#12395d;margin:6px 0;overflow-wrap:anywhere;}}
-          .ffm-step-days {{font-size:12px;color:#536d84;}}
-          .ffm-panel-divider {{border-top:1px solid #e2eaf2;margin:16px 0 20px;}}
-          .ffm-panel-heading {{font-size:18px;font-weight:750;color:#12395d;margin-bottom:12px;}}
-          .ffm-free-row {{display:flex;justify-content:space-between;gap:12px;align-items:baseline;
-              padding:12px 0;border-bottom:1px solid #e8eef4;color:#1d405e;font-size:14px;}}
-          .ffm-free-row strong {{font-size:14px;text-align:right;}}
-          .ffm-free-row:last-child {{border-bottom:none;}}
-          .ffm-free-status {{font-size:12px;font-weight:650;margin-top:7px;}}
-          .ffm-free-status.safe {{color:#168052;}} .ffm-free-status.warning {{color:#b77c13;}}
-          .ffm-free-status.danger {{color:#c23b45;}} .ffm-free-status.unknown {{color:#64748b;}}
-          @media(max-width:650px) {{.ffm-monitor-panel{{padding:16px 12px}}
-              .ffm-journey-step{{padding-left:2px;padding-right:2px}}
-              .ffm-step-date{{font-size:12px}}
-              .ffm-step-label{{font-size:10px}}}}
-        </style>
-        <div class="ffm-monitor-panel">
-          <div class="ffm-panel-eyebrow">CONTAINER JOURNEY</div>
-          <div class="ffm-panel-title">Container {html.escape(str(selected))}</div>
-          <div class="ffm-panel-subtitle">Location: {vessel_info} &nbsp; · &nbsp; Agent: {html.escape(str(r['FORWARDING AGENT']))}</div>
-          <div class="ffm-panel-subtitle" style="font-weight:700;color:#155caa">{html.escape(stage_summary)}</div>
-          <div class="ffm-journey-wrap">
-            <div class="ffm-vessel" aria-hidden="true">
-                <svg viewBox="0 0 64 40" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Container ship positioned at confirmed process stage">
-                  <path d="M6 25h53l-9 11H18Z" fill="#12395d"/>
-                  <path d="M10 25h48" stroke="#1f6caa" stroke-width="2"/>
-                  <rect x="17" y="14" width="12" height="10" rx="1" fill="#e7a83d"/>
-                  <rect x="30" y="14" width="12" height="10" rx="1" fill="#5aa4c8"/>
-                  <rect x="24" y="4" width="12" height="9" rx="1" fill="#e7a83d"/>
-                  <rect x="44" y="8" width="8" height="16" rx="1" fill="#d8e5ef"/>
-                  <path d="M3 38q5-3 10 0t10 0t10 0t10 0t10 0t10 0" fill="none" stroke="#52a9d4" stroke-width="2"/>
-                </svg>
-            </div>
-            <div class="ffm-journey">{''.join(steps)}</div>
-          </div>
-          <div class="ffm-panel-divider"></div>
-          <div class="ffm-panel-heading">Free Time Monitoring</div>
-          <div class="ffm-free-row"><span>DEM Free Time</span><strong>{allowance(r['DEM FREE TIME'])}</strong></div>
-          <div class="ffm-free-row"><span>DEM Deadline</span><strong>{html.escape(date_label(r['LAST DAY FT DEM']))}</strong></div>
-          <div class="ffm-free-status {dem_class}">{html.escape(dem_status)}</div>
-          <div class="ffm-free-row"><span>DET Free Time</span><strong>{allowance(r['DET FREE TIME'])}</strong></div>
-          <div class="ffm-free-row"><span>DET Deadline</span><strong>{html.escape(date_label(r['LAST DAY FT DET']))}</strong></div>
-          <div class="ffm-free-status {det_class}">{html.escape(det_status)}</div>
-        </div>
-        """
-        st.markdown(panel, unsafe_allow_html=True)
-
-        with st.expander("Shipment details and remarks"):
-            st.write("**Supplier:**", r["SUPPLIER"])
-            st.write("**BL No.:**", r["BL NO"])
-            st.write("**Delivery status:**", r["STATUS"])
-            st.write("**Payment status:**", r["PAYMENT STATUS"])
-            st.write("**Remarks:**", r["REMARKS"] or "—")
+        stage_cols = ["VESSEL ETA", "DELIVERED", "RFC", "MT RETURN"]
+        def stage_done(row, col):
+            value = row[col]
+            return pd.notna(value) and value.normalize() <= today
+        by_container = subset.groupby("CNTNR NO", dropna=False)
+        rows = []
+        for container, group in by_container:
+            dates = {}
+            for col in stage_cols:
+                valid = pd.to_datetime(group[col], errors="coerce").dropna()
+                valid = valid[valid.dt.normalize() <= today]
+                dates[col] = valid.min() if not valid.empty else pd.NaT
+            rows.append({"Container":str(container), **dates})
+        progress = pd.DataFrame(rows)
+        total_containers = len(progress)
+        counts = {col:int(progress[col].notna().sum()) for col in stage_cols}
+        delivered_count = counts["DELIVERED"]
+        rfc_count = counts["RFC"]
+        returned_count = counts["MT RETURN"]
+        st.markdown(f"""<div style="background:white;border:1px solid #dce7f2;border-radius:14px;
+            padding:18px 22px;margin:10px 0 16px;box-shadow:0 5px 20px #173b5910">
+            <div style="font-size:11px;letter-spacing:1px;color:#5e7b95;font-weight:800">VESSEL PROGRESS</div>
+            <div style="font-size:22px;font-weight:800;color:#12395d;margin-top:6px">{html.escape(selected_vessel)}</div>
+            <div style="font-size:12px;color:#668198;margin-top:5px">{total_containers} unique containers</div>
+            </div>""", unsafe_allow_html=True)
+        a,b,c,d = st.columns(4)
+        a.metric("Total containers",total_containers)
+        b.metric("Delivered",f"{delivered_count} / {total_containers}")
+        c.metric("RFC · Empty",f"{rfc_count} / {total_containers}")
+        d.metric("Empty returned",f"{returned_count} / {total_containers}")
+        a,b,c = st.columns(3)
+        a.metric("Balance to deliver",max(0,total_containers-delivered_count))
+        b.metric("Balance to empty (RFC)",max(0,total_containers-rfc_count))
+        c.metric("Balance to return",max(0,total_containers-returned_count))
+        st.markdown("#### Vessel Process Progress")
+        stages = [("ETA", "VESSEL ETA"), ("Delivered", "DELIVERED"),
+                  ("RFC · Empty", "RFC"), ("Empty Return", "MT RETURN")]
+        # One aligned journey with four milestones and three connecting segments.
+        progress_cells=[]
+        for idx,(label,col) in enumerate(stages):
+            completed=counts[col]
+            pct=100*completed/total_containers if total_containers else 0
+            first_date=progress[col].min()
+            date_text=first_date.strftime("%d %b %Y") if pd.notna(first_date) else "—"
+            progress_cells.append(f"""<div class="vessel-phase">
+                <div class="vessel-dot"></div><div class="vessel-label">{html.escape(label)}</div>
+                <div class="vessel-count">{completed} / {total_containers}</div>
+                <div class="vessel-small">{pct:.0f}% completed</div>
+                <div class="vessel-small">First: {date_text}</div>
+                </div>""")
+        st.markdown(f"""<style>
+          .vessel-journey{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+            margin:18px 0 22px;padding:10px 0 0;background:white;border:1px solid #dce7f2;
+            border-radius:14px;box-shadow:0 5px 20px #173b5910}}
+          .vessel-phase{{position:relative;text-align:center;padding:40px 5px 20px}}
+          .vessel-phase:not(:last-child)::after{{content:"";position:absolute;top:18px;
+            left:50%;width:100%;height:2px;background:#a5c0d9;z-index:0}}
+          .vessel-dot{{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+            height:17px;width:17px;background:#155caa;border:3px solid white;
+            border-radius:50%;box-shadow:0 0 0 2px #155caa;z-index:2}}
+          .vessel-label{{font-size:12px;color:#4f6880}}
+          .vessel-count{{font-size:20px;font-weight:800;color:#12395d;margin:6px 0}}
+          .vessel-small{{font-size:11px;color:#668198;margin-top:4px}}
+          </style><div class="vessel-journey">{''.join(progress_cells)}</div>""",unsafe_allow_html=True)
+        st.markdown("#### Daily Delivery & Emptying Progress")
+        # Milestone dates count the number of distinct containers that completed
+        # the stage on that calendar day; running cumulative totals show balances.
+        dates=[]
+        for col in stage_cols[1:]:
+            dates.extend(progress[col].dropna().dt.normalize().tolist())
+        if dates:
+            start_day=min(dates)
+            end_day=max(dates)
+            calendar=pd.DataFrame({"Date":pd.date_range(start_day,end_day,freq="D")})
+            for col,name in [("DELIVERED","Delivered"),("RFC","RFC / Empty"),("MT RETURN","Empty returned")]:
+                daily=progress[col].dropna().dt.normalize().value_counts()
+                calendar[name+" today"]=calendar["Date"].map(daily).fillna(0).astype(int)
+                calendar[name+" cumulative"]=calendar[name+" today"].cumsum()
+                calendar[name+" balance"]=(total_containers-calendar[name+" cumulative"]).clip(lower=0)
+            calendar["Date"]=calendar["Date"].dt.strftime("%d %b %Y")
+            st.dataframe(calendar,hide_index=True,use_container_width=True,height=320)
+        else:
+            st.info("No completed delivery, RFC or return dates recorded for this group.")
+        st.markdown("#### Container Status by Vessel")
+        status=progress.rename(columns={"VESSEL ETA":"ETA", "MT RETURN":"Empty Return"}).copy()
+        for col in ("ETA","DELIVERED","RFC","Empty Return"):
+            status[col]=pd.to_datetime(status[col]).dt.strftime("%d %b %Y").fillna("—")
+        status["Current Stage"]=progress.apply(
+            lambda r: "Empty returned" if pd.notna(r["MT RETURN"]) else
+                      "RFC · Empty" if pd.notna(r["RFC"]) else
+                      "Delivered" if pd.notna(r["DELIVERED"]) else
+                      "Awaiting delivery",axis=1)
+        st.dataframe(status,hide_index=True,use_container_width=True)
     else:
-        st.info("Select a container number above to see its timeline and free-time deadlines.")
-    with st.expander("View all container records"):
-        monitor_cols = ["CNTNR NO", "BL NO", "SUPPLIER", "DELIVERY LOC", "FORWARDING AGENT", "STATUS", "VESSEL ETA", "DELIVERED", "RFC", "MT RETURN", "DEM FREE TIME", "LAST DAY FT DEM", "DET FREE TIME", "LAST DAY FT DET"]
-        st.dataframe(f[monitor_cols], use_container_width=True, hide_index=True, height=340)
+        st.info("Select a vessel or BL shipment group to view total containers, delivery, RFC and return balances.")
 
 with overview:
     a, b = st.columns([1.65, 1])
