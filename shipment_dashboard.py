@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Shipment Control Tower", page_icon="🚢", layout="wide", initial_sidebar_state="expanded")
 
@@ -92,6 +93,31 @@ st.markdown("""
 
 st.markdown('\n<style>\n/* Wider, readable, compact filters sidebar */\n[data-testid="stSidebar"] {\n  width: 345px !important;\n  min-width: 345px !important;\n}\n[data-testid="stSidebar"] > div:first-child {\n  width: 345px !important;\n}\n[data-testid="stSidebar"] [data-testid="stSidebarContent"] {\n  padding: 12px 17px 20px !important;\n  overflow-x: hidden !important;\n}\n[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {\n  gap: .48rem !important;\n}\n[data-testid="stSidebar"] .filter-intro {\n  padding: 17px 17px 15px !important;\n  margin: 0 0 8px !important;\n  border-radius: 11px !important;\n}\n[data-testid="stSidebar"] .filter-heading {\n  font-size: 21px !important;\n}\n[data-testid="stSidebar"] .filter-description {\n  font-size: 11px !important;\n  margin-top: 5px !important;\n}\n[data-testid="stSidebar"] .filter-section {\n  font-size: 10px !important;\n  letter-spacing: .8px !important;\n  margin: 7px 0 5px !important;\n  padding: 7px 0 !important;\n}\n[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {\n  font-size: 12px !important;\n  white-space: normal !important;\n  overflow-wrap: anywhere !important;\n  line-height: 1.35 !important;\n}\n[data-testid="stSidebar"] [data-baseweb="select"] > div,\n[data-testid="stSidebar"] [data-testid="stTextInput"] input {\n  min-height: 38px !important;\n}\n[data-testid="stSidebar"] [data-testid="stWidgetLabel"] {\n  margin-bottom: 3px !important;\n}\n@media(max-width: 760px) {\n  [data-testid="stSidebar"],[data-testid="stSidebar"] > div:first-child {\n    width: min(345px, 90vw) !important;\n    min-width: 0 !important;\n  }\n}\n</style>\n', unsafe_allow_html=True)
 
+st.markdown("""
+<style>
+/* Keep sidebar open; hide only its collapse/hide button. */
+[data-testid="stSidebarCollapseButton"],
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarHeader"] button,
+button[aria-label="Close sidebar"],
+button[aria-label="Collapse sidebar"] {display:none!important;}
+/* Page navigation lives in the sidebar, not as a crowded horizontal tab bar. */
+.nav-eyebrow {font-size:10px;font-weight:800;letter-spacing:1.5px;color:#5682a1;margin:8px 0 7px}
+.nav-heading {font-size:20px;font-weight:800;color:#10365e;letter-spacing:-.5px;margin-bottom:15px}
+.nav-divider {height:1px;background:#dce8f2;margin:18px 0 13px}
+.page-eyebrow {font-size:11px;letter-spacing:1.3px;font-weight:750;color:#52718d;margin:8px 0 13px}
+[data-testid="stSidebar"] [role="radiogroup"] {gap:5px!important}
+[data-testid="stSidebar"] [role="radiogroup"] label {border-radius:9px;padding:8px 10px!important;
+  background:transparent;border:1px solid transparent;transition:background .15s ease}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {
+  background:#e3f0fa!important;border-color:#b9d9ee!important}
+[data-testid="stSidebar"] [role="radiogroup"] label p {font-size:13px!important;font-weight:650!important;color:#234b6d!important}
+[data-testid="stSidebar"] [data-testid="stExpander"] {background:#fff;border:1px solid #dce8f2;border-radius:11px}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary {font-weight:700;color:#174b78}
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_data(show_spinner="Reading shipment workbook...")
 def read_workbook(data: bytes) -> pd.DataFrame:
     excel = pd.ExcelFile(io.BytesIO(data))
@@ -139,8 +165,8 @@ def read_workbook(data: bytes) -> pd.DataFrame:
     for col in ("DEM TO PAY / DAYS", "DET TO PAY / DAYS"):
         if col not in df.columns:
             df[col] = 0
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-        df[col + " POSITIVE"] = df[col].clip(lower=0)
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        df[col + " POSITIVE"] = df[col].clip(lower=0).fillna(0)
     for col in ("DEM FREE TIME", "DET FREE TIME"):
         if col not in df.columns:
             df[col] = pd.NA
@@ -256,24 +282,43 @@ except Exception as exc:
     st.error(f"Unable to load workbook: {exc}")
     st.stop()
 
+# Navigation is separate from filtering: choose a page first, then optionally
+# expand the filters. This avoids seven cramped tabs across the page header.
+PAGES = [
+    ("📦 Container Monitoring", "monitor"),
+    ("📊 Overview", "overview"),
+    ("⚠️ DEM / DET Analysis", "risks"),
+    ("⏱️ Lead-Time Analysis", "leadtime"),
+    ("📈 Performance Comparison", "comparison"),
+    ("🔍 Root-Cause Analysis", "rootcause"),
+    ("🔎 Shipment Explorer", "records"),
+]
 with st.sidebar:
-    st.markdown("""<div class="filter-intro"><div class="filter-eyebrow">FFM LOGISTICS · CONTROL TOWER</div>
-    <div class="filter-heading">Filters & Search</div>
-    </div>""", unsafe_allow_html=True)
-    st.markdown('<div class="filter-section">SEARCH CONTAINER</div>', unsafe_allow_html=True)
-    search = st.text_input("Container number", placeholder="🔎  Enter container number", key="container", label_visibility="collapsed")
-    st.markdown('<div class="filter-section">SHIPMENT DETAILS</div>', unsafe_allow_html=True)
-    def filter_multi(label, column, key):
-        options = sorted(df[column].dropna().astype(str).unique().tolist())
-        return st.multiselect(label, options, default=[], key=key, placeholder="All")
-    months = filter_multi("ETA month", "ETA MONTH", "month")
-    locations = filter_multi("Delivery location", "DELIVERY LOC", "location")
-    agents = filter_multi("Forwarding agent", "FORWARDING AGENT", "agent")
-    statuses = filter_multi("Delivery status", "STATUS", "status")
-    payments = filter_multi("Payment status", "PAYMENT STATUS", "payment_status")
-    suppliers = filter_multi("Supplier", "SUPPLIER", "supplier")
-    st.markdown('<div class="filter-section">DEM / DET</div>', unsafe_allow_html=True)
-    only_positive = st.checkbox("Show positive DEM / DET days only", key="positive_only")
+    st.markdown('<div class="nav-eyebrow">FFM · LOGISTICS INTELLIGENCE</div>', unsafe_allow_html=True)
+    st.markdown('<div class="nav-heading">Dashboard Navigation</div>', unsafe_allow_html=True)
+    page_label = st.radio(
+        "Dashboard pages", [label for label, _ in PAGES],
+        key="active_dashboard_page", label_visibility="collapsed",
+    )
+    active_page = dict(PAGES)[page_label]
+    st.markdown('<div class="nav-divider"></div>', unsafe_allow_html=True)
+    with st.expander("🔎 Filters & Search", expanded=False):
+        search = st.text_input("Container number", placeholder="Search container number", key="container")
+        def filter_multi(label, column, key):
+            options = sorted(df[column].dropna().astype(str).unique().tolist())
+            return st.multiselect(label, options, default=[], key=key, placeholder="All")
+        months = filter_multi("ETA month", "ETA MONTH", "month")
+        locations = filter_multi("Delivery location", "DELIVERY LOC", "location")
+        agents = filter_multi("Forwarding agent", "FORWARDING AGENT", "agent")
+        statuses = filter_multi("Delivery status", "STATUS", "status")
+        payments = filter_multi("Payment status", "PAYMENT STATUS", "payment_status")
+        suppliers = filter_multi("Supplier", "SUPPLIER", "supplier")
+        only_positive = st.checkbox("Positive DEM / DET days only", key="positive_only")
+    active_filter_count = sum(bool(v) for v in [search.strip(), months, locations, agents, statuses, payments, suppliers, only_positive])
+    if active_filter_count:
+        st.caption(f"{active_filter_count} active filter(s) · Applies to all pages")
+    else:
+        st.caption("All shipments · Filters apply to every page")
 
 
 f = df.copy()
@@ -309,17 +354,6 @@ if f.empty:
     st.warning("No records match the selected filters. Clear your selections to view all records.")
     st.stop()
 
-# Payment status summary, based on the second Excel STATUS column (STATUS.1).
-payment_counts = f["PAYMENT STATUS"].astype(str).str.strip().value_counts()
-to_paid = int(payment_counts.get("To Paid", 0))
-no_payment = int(payment_counts.get("No", 0))
-other_payment = total - to_paid - no_payment
-st.markdown("### Payment Status Overview")
-pa, pb, pc = st.columns(3)
-pa.metric("🔴 To Paid", f"{to_paid:,}")
-pb.metric("🟢 No", f"{no_payment:,}")
-pc.metric("⚪ Other / Not specified", f"{other_payment:,}")
-
 # Reusable, validated stage intervals. Negative durations are data-quality issues,
 # not negative process lead times.
 def stage_days(frame, start, end):
@@ -346,7 +380,7 @@ def category_summary(frame, field):
     return result.sort_values("Recorded_chargeable_days", ascending=False)
 
 
-monitor, overview, risks, leadtime, comparison, rootcause, records = st.tabs(["📦 Container Monitoring", "📊 Overview", "⚠️ DEM / DET analysis", "⏱️ Lead-Time Analysis", "📈 Performance Comparison", "🔍 Root-Cause Analysis", "🔎 Shipment explorer"])
+st.markdown(f'<div class="page-eyebrow">FFM LOGISTICS / {html.escape(page_label.replace("📦 ", "").replace("📊 ", ""))}</div>', unsafe_allow_html=True)
 
 # Optional vessel register: map BL numbers to actual vessel names.
 # The original Excel has VESSEL ETA but does not have a vessel-name column.
@@ -377,7 +411,7 @@ working["VESSEL GROUP"] = working.apply(
     else ("BL " + r["BL KEY"] if r["BL KEY"] and r["BL KEY"].lower() not in ("nan", "none")
           else "Unassigned · " + str(r["CNTNR NO"])), axis=1)
 
-with monitor:
+if active_page == "monitor":
     st.subheader("Vessel Monitoring")
     choices = sorted(working["VESSEL GROUP"].unique().tolist())
     selected_vessel = st.selectbox("Vessel / BL shipment group", choices, index=None,
@@ -399,7 +433,17 @@ with monitor:
                 valid = pd.to_datetime(group[col], errors="coerce").dropna()
                 valid = valid[valid.dt.normalize() <= today]
                 dates[col] = valid.min() if not valid.empty else pd.NaT
-            rows.append({"Container":str(container), **dates})
+            # R/S are signed deadline differences: negative = early, zero = on time,
+            # positive = days late. Keep missing values unknown, not zero.
+            delay_values = {}
+            for delay_col, output_col in [
+                ("DEM TO PAY / DAYS", "DEM Delay Days"),
+                ("DET TO PAY / DAYS", "DET Delay Days"),
+            ]:
+                vals = pd.to_numeric(group[delay_col], errors="coerce").dropna()
+                # If duplicate sheets disagree, use the most conservative recorded value.
+                delay_values[output_col] = vals.max() if not vals.empty else float("nan")
+            rows.append({"Container":str(container), **dates, **delay_values})
         progress = pd.DataFrame(rows)
         total_containers = len(progress)
         counts = {col:int(progress[col].notna().sum()) for col in stage_cols}
@@ -412,130 +456,342 @@ with monitor:
             <div style="font-size:22px;font-weight:800;color:#12395d;margin-top:6px">{html.escape(selected_vessel)}</div>
             <div style="font-size:12px;color:#668198;margin-top:5px">{total_containers} unique containers</div>
             </div>""", unsafe_allow_html=True)
-        a,b,c,d = st.columns(4)
-        a.metric("Total containers",total_containers)
-        b.metric("Delivered",f"{delivered_count} / {total_containers}")
-        c.metric("RFC · Empty",f"{rfc_count} / {total_containers}")
-        d.metric("Empty returned",f"{returned_count} / {total_containers}")
-        a,b,c = st.columns(3)
-        a.metric("Balance to deliver",max(0,total_containers-delivered_count))
-        b.metric("Balance to empty (RFC)",max(0,total_containers-rfc_count))
-        c.metric("Balance to return",max(0,total_containers-returned_count))
-        st.markdown("#### Vessel Process Progress")
+        st.markdown("#### Container Journey")
         stages = [("ETA", "VESSEL ETA"), ("Delivered", "DELIVERED"),
                   ("RFC · Empty", "RFC"), ("Empty Return", "MT RETURN")]
-        # One aligned journey with four milestones and three connecting segments.
-        progress_cells=[]
-        for idx,(label,col) in enumerate(stages):
-            completed=counts[col]
-            pct=100*completed/total_containers if total_containers else 0
-            first_date=progress[col].min()
-            date_text=first_date.strftime("%d %b %Y") if pd.notna(first_date) else "—"
-            progress_cells.append(f"""<div class="vessel-phase">
-                <div class="vessel-dot"></div><div class="vessel-label">{html.escape(label)}</div>
+        # Move the vessel along the journey only as each entire stage completes.
+        # E.g. 5/12 delivered => 5/12 of the distance ETA -> Delivered.
+        # Once 12/12 delivered, RFC progress moves it toward RFC, and so on.
+        delivery_fraction = counts["DELIVERED"] / total_containers if total_containers else 0.0
+        rfc_fraction = counts["RFC"] / total_containers if total_containers else 0.0
+        return_fraction = counts["MT RETURN"] / total_containers if total_containers else 0.0
+        if delivery_fraction < 1:
+            journey_progress = delivery_fraction
+            current_phase = "ETA → Delivered"
+        elif rfc_fraction < 1:
+            journey_progress = 1 + rfc_fraction
+            current_phase = "Delivered → RFC"
+        else:
+            journey_progress = 2 + return_fraction
+            current_phase = "RFC → Empty Return" if return_fraction < 1 else "All stages complete"
+        journey_progress = max(0.0, min(3.0, journey_progress))
+        ship_position = 12.5 + 25.0 * journey_progress
+        track_fill = 100.0 * journey_progress / 3.0
+        ship_svg = ("<svg viewBox='0 0 64 42' width='58' height='39' aria-label='Container vessel' "
+                    "xmlns='http://www.w3.org/2000/svg'><path d='M5 26h54l-10 11H16Z' fill='#143c62'/>"
+                    "<rect x='11' y='15' width='14' height='10' rx='1' fill='#e7a332'/>"
+                    "<rect x='27' y='15' width='14' height='10' rx='1' fill='#66a8cb'/>"
+                    "<rect x='19' y='4' width='14' height='10' rx='1' fill='#e7a332'/>"
+                    "<path d='M8 39q7-4 14 0t14 0t14 0t12 0' stroke='#6db5d8' "
+                    "stroke-width='2' fill='none'/></svg>")
+        progress_cells = []
+        for idx, (label, col) in enumerate(stages):
+            completed = counts[col]
+            pct = 100 * completed / total_containers if total_containers else 0
+            latest_date = progress[col].max()
+            date_text = latest_date.strftime("%d %b %Y") if pd.notna(latest_date) else "—"
+            done_class = " is-complete" if completed == total_containers and total_containers else ""
+            progress_cells.append(f"""<div class="vessel-phase{done_class}">
+                <div class="vessel-dot"></div>
+                <div class="vessel-label">{html.escape(label)}</div>
                 <div class="vessel-count">{completed} / {total_containers}</div>
                 <div class="vessel-small">{pct:.0f}% completed</div>
-                <div class="vessel-small">First: {date_text}</div>
+                <div class="vessel-small">Latest: {date_text}</div>
                 </div>""")
-        st.markdown(f"""<style>
-          .vessel-journey{{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
-            margin:18px 0 22px;padding:10px 0 0;background:white;border:1px solid #dce7f2;
-            border-radius:14px;box-shadow:0 5px 20px #173b5910}}
-          .vessel-phase{{position:relative;text-align:center;padding:40px 5px 20px}}
-          .vessel-phase:not(:last-child)::after{{content:"";position:absolute;top:18px;
-            left:50%;width:100%;height:2px;background:#a5c0d9;z-index:0}}
-          .vessel-dot{{position:absolute;top:10px;left:50%;transform:translateX(-50%);
-            height:17px;width:17px;background:#155caa;border:3px solid white;
-            border-radius:50%;box-shadow:0 0 0 2px #155caa;z-index:2}}
-          .vessel-label{{font-size:12px;color:#4f6880}}
+        # Actual vessel milestone elapsed days, never a statistical average.
+        # Each stage is measured from the previous stage's latest recorded date;
+        # ETA is the earliest scheduled ETA across selected containers.
+        milestone_dates = [progress["VESSEL ETA"].min(),
+                           progress["DELIVERED"].max(),
+                           progress["RFC"].max(),
+                           progress["MT RETURN"].max()]
+        lead_labels = []
+        for idx in range(3):
+            start_date, end_date = milestone_dates[idx:idx + 2]
+            segment_complete = total_containers > 0 and counts[stages[idx + 1][1]] == total_containers
+            if pd.notna(start_date) and pd.notna(end_date) and end_date >= start_date:
+                elapsed_days = (end_date.normalize() - start_date.normalize()).days
+                duration_text = f"{elapsed_days} days"
+                detail_text = "" if segment_complete else "so far"
+            else:
+                duration_text = "Pending"
+                detail_text = ""
+            lead_labels.append(f"""<div class="journey-duration duration-{idx}">
+                <strong>{html.escape(duration_text)}</strong>
+                <span>{html.escape(detail_text)}</span>
+                </div>""")
+        all_returned = total_containers > 0 and counts["MT RETURN"] == total_containers
+        if all_returned and pd.notna(milestone_dates[0]) and pd.notna(milestone_dates[3]) and milestone_dates[3] >= milestone_dates[0]:
+            total_days = (milestone_dates[3].normalize() - milestone_dates[0].normalize()).days
+            overall_text = f"{total_days} days"
+            overall_status = "Journey Completed"
+        else:
+            overall_text = "In progress"
+            overall_status = "Awaiting completion of all containers"
+        components.html(f"""<!doctype html><html><head><meta charset="utf-8"><style>
+          html,body{{margin:0;padding:0;background:transparent;font-family:Arial,sans-serif;}}
+          .vessel-journey{{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+            margin:10px 0 0;padding:10px 0 0;background:white;border:1px solid #dce7f2;
+            border-radius:14px;box-shadow:0 5px 20px #173b5910;overflow:hidden}}
+          .vessel-track{{position:absolute;top:132px;left:12.5%;width:75%;height:3px;
+            background:#c8d9e7;z-index:0}}
+          .vessel-track-fill{{height:100%;width:{track_fill:.3f}%;background:#155caa;transition:width .6s ease}}
+          .vessel-phase{{position:relative;text-align:center;padding:160px 5px 24px;z-index:1}}
+          .vessel-ship{{position:absolute;top:60px;left:{ship_position:.3f}%;
+            transform:translateX(-50%);z-index:5;line-height:0;transition:left .7s ease}}
+          .vessel-dot{{position:absolute;top:124px;left:50%;transform:translateX(-50%);
+            height:16px;width:16px;background:white;border:3px solid #8daecb;
+            border-radius:50%;z-index:2;box-sizing:border-box}}
+          .vessel-phase.is-complete .vessel-dot{{background:#155caa;border-color:#155caa;
+            box-shadow:0 0 0 3px #e2effa}}
+          .vessel-label{{font-size:14px;font-weight:700;color:#244968;line-height:1.5;min-height:22px}}
           .vessel-count{{font-size:20px;font-weight:800;color:#12395d;margin:6px 0}}
           .vessel-small{{font-size:11px;color:#668198;margin-top:4px}}
-          </style><div class="vessel-journey">{''.join(progress_cells)}</div>""",unsafe_allow_html=True)
-        st.markdown("#### Daily Delivery & Emptying Progress")
-        # Milestone dates count the number of distinct containers that completed
-        # the stage on that calendar day; running cumulative totals show balances.
-        dates=[]
-        for col in stage_cols[1:]:
-            dates.extend(progress[col].dropna().dt.normalize().tolist())
-        if dates:
-            start_day=min(dates)
-            end_day=max(dates)
-            calendar=pd.DataFrame({"Date":pd.date_range(start_day,end_day,freq="D")})
-            for col,name in [("DELIVERED","Delivered"),("RFC","RFC / Empty"),("MT RETURN","Empty returned")]:
-                daily=progress[col].dropna().dt.normalize().value_counts()
-                calendar[name+" today"]=calendar["Date"].map(daily).fillna(0).astype(int)
-                calendar[name+" cumulative"]=calendar[name+" today"].cumsum()
-                calendar[name+" balance"]=(total_containers-calendar[name+" cumulative"]).clip(lower=0)
-            calendar["Date"]=calendar["Date"].dt.strftime("%d %b %Y")
-            st.dataframe(calendar,hide_index=True,use_container_width=True,height=320)
-        else:
-            st.info("No completed delivery, RFC or return dates recorded for this group.")
-        st.markdown("#### Container Status by Vessel")
-        status=progress.rename(columns={"VESSEL ETA":"ETA", "MT RETURN":"Empty Return"}).copy()
-        for col in ("ETA","DELIVERED","RFC","Empty Return"):
-            status[col]=pd.to_datetime(status[col]).dt.strftime("%d %b %Y").fillna("—")
-        status["Current Stage"]=progress.apply(
-            lambda r: "Empty returned" if pd.notna(r["MT RETURN"]) else
-                      "RFC · Empty" if pd.notna(r["RFC"]) else
-                      "Delivered" if pd.notna(r["DELIVERED"]) else
-                      "Awaiting delivery",axis=1)
-        st.dataframe(status,hide_index=True,use_container_width=True)
+          .journey-duration{{position:absolute;top:104px;width:24%;text-align:center;z-index:3;
+            color:#204c71;display:flex;flex-direction:column;gap:3px;pointer-events:none}}
+          .journey-duration strong{{font-size:12px;line-height:1.1;white-space:nowrap}}
+          .journey-duration span{{font-size:10px;color:#6a8295;line-height:1.1;white-space:nowrap}}
+          .duration-0{{left:13%}}.duration-1{{left:38%}}.duration-2{{left:63%}}
+          .journey-note{{font-size:11px;color:#49677e;text-align:center;padding:8px 0 3px}}
+          .overall-lead{{margin:6px 0 0;padding:10px 14px;background:#f3f7fb;
+            border:1px solid #dce7f2;border-radius:9px;color:#244968;font-size:12px;text-align:center}}
+          .overall-lead strong{{color:#12395d;font-size:15px}}
+          </style></head><body><div class="vessel-journey">
+          <div class="vessel-track"><div class="vessel-track-fill"></div></div>
+          {''.join(lead_labels)}
+          <div class="vessel-ship">{ship_svg}</div>{''.join(progress_cells)}</div>
+          <div class="overall-lead">Total Vessel Journey · <strong>{html.escape(overall_text)}</strong>
+            &nbsp; · &nbsp; {html.escape(overall_status)}</div>
+          <div class="journey-note">{html.escape(current_phase)} · Ship moves with milestone completion</div>
+          </body></html>""", height=375, scrolling=False)
+
+        # The separate Daily Delivery table is omitted here to avoid duplicating
+        # container-journey information. The detailed container table remains below.
+        st.markdown("#### Delivery & Return Balances")
+        bal1,bal2,bal3=st.columns(3)
+        bal1.metric("Not yet delivered",max(0,total_containers-delivered_count))
+        bal2.metric("Delivered, awaiting RFC",max(0,delivered_count-rfc_count))
+        bal3.metric("RFC, awaiting return",max(0,rfc_count-returned_count))
+        st.markdown("#### DEM / DET Deadline Performance")
+        # Completion status is only meaningful once the respective milestone is recorded.
+        # DEM is provisionally tied to Delivered; DET to MT RETURN, following the workbook.
+        def deadline_result(days, completed):
+            if pd.isna(completed) or pd.isna(days):
+                return "Not confirmed"
+            if days > 0:
+                return "Late"
+            if days < 0:
+                return "Early"
+            return "On time"
+
+        progress["DEM Status"] = progress.apply(
+            lambda r: deadline_result(r["DEM Delay Days"], r["DELIVERED"]), axis=1)
+        progress["DET Status"] = progress.apply(
+            lambda r: deadline_result(r["DET Delay Days"], r["MT RETURN"]), axis=1)
+        dem_col, det_col = st.columns(2)
+        for kind, area in (("DEM", dem_col), ("DET", det_col)):
+            stat_col = f"{kind} Status"
+            days_col = f"{kind} Delay Days"
+            early_or_ontime = int(progress[stat_col].isin(["Early", "On time"]).sum())
+            late = int((progress[stat_col] == "Late").sum())
+            unknown = int((progress[stat_col] == "Not confirmed").sum())
+            delay_days = int(progress.loc[progress[stat_col] == "Late", days_col].sum())
+            with area:
+                st.markdown(f"**{kind}**")
+                st.caption(f"{early_or_ontime} early / on time · {unknown} not confirmed")
+                st.metric("Containers late", late)
+                st.caption(f"{delay_days} total days late")
+
+        # One container-level table replaces separate DEM/DET, daily milestone,
+        # and vessel status tables. The journey already shows milestone totals.
+        with st.expander("Container details · dates and DEM / DET", expanded=False):
+            detail = progress[["Container", "VESSEL ETA", "DELIVERED",
+                               "RFC", "MT RETURN", "DEM Delay Days", "DEM Status",
+                               "DET Delay Days", "DET Status"]].copy()
+            detail["Current stage"] = progress.apply(
+                lambda r: "Empty returned" if pd.notna(r["MT RETURN"]) else
+                          "Unloaded / RFC" if pd.notna(r["RFC"]) else
+                          "Delivered" if pd.notna(r["DELIVERED"]) else
+                          "Awaiting delivery", axis=1)
+            for col in ("VESSEL ETA", "DELIVERED", "RFC", "MT RETURN"):
+                detail[col] = pd.to_datetime(detail[col]).dt.strftime("%d %b %Y").fillna("—")
+            for kind in ("DEM", "DET"):
+                col = f"{kind} Delay Days"
+                detail[col] = detail[col].map(
+                    lambda v: "—" if pd.isna(v) else
+                    f"({abs(int(v))} days early)" if v < 0 else
+                    f"{int(v)} days late" if v > 0 else "0 days")
+            def status_colors(v):
+                if v in ("Early", "On time"):
+                    return "background-color:#e3f6e9;color:#116b3a;font-weight:700"
+                if v == "Late":
+                    return "background-color:#fde8e8;color:#b42318;font-weight:700"
+                return "color:#697c8f"
+            st.dataframe(detail.style.map(status_colors, subset=["DEM Status", "DET Status"]),
+                         hide_index=True, use_container_width=True)
     else:
         st.info("Select a vessel or BL shipment group to view total containers, delivery, RFC and return balances.")
 
-with overview:
-    a, b = st.columns([1.65, 1])
-    with a:
-        st.subheader("Monthly shipment trend")
-        trend = f[f["ETA MONTH"] != "No ETA"].groupby(["ETA MONTH", "DELIVERY GROUP"]).size().reset_index(name="Containers")
-        if not trend.empty:
-            fig = px.bar(trend, x="ETA MONTH", y="Containers", color="DELIVERY GROUP",
-                         barmode="group", color_discrete_map={"Delivered": TEAL, "Other / Pending": ORANGE})
-            fig.update_layout(xaxis_title=None, yaxis_title="Containers")
-            st.plotly_chart(fig, use_container_width=True, config={"displaylogo":False})
-        else:
-            st.info("No valid ETA dates.")
-    with b:
-        st.subheader("Delivery status")
-        status = f.groupby("DELIVERY GROUP").size().reset_index(name="Containers")
-        fig = px.pie(status, names="DELIVERY GROUP", values="Containers", hole=.68,
-                     color="DELIVERY GROUP", color_discrete_map={"Delivered": TEAL, "Other / Pending": ORANGE})
-        fig.update_traces(textinfo="percent")
-        st.plotly_chart(fig, use_container_width=True, config={"displaylogo":False})
-    st.subheader("Payment status by container")
-    payment_summary = f.groupby("PAYMENT STATUS", dropna=False).size().reset_index(name="Containers")
-    payment_summary["PAYMENT STATUS"] = payment_summary["PAYMENT STATUS"].astype(str)
-    fig = px.bar(
-        payment_summary.sort_values("Containers", ascending=True),
-        x="Containers", y="PAYMENT STATUS", orientation="h", color="PAYMENT STATUS",
-        text="Containers",
-        color_discrete_map={"To Paid": "#D83A42", "No": "#20A66B", "Not specified": "#9AA9B8"},
-    )
-    fig.update_traces(textposition="outside", cliponaxis=False)
-    fig.update_layout(showlegend=False, xaxis_title="Containers", yaxis_title=None,
-                      margin=dict(l=10, r=45, t=10, b=10), height=max(230, 65 * len(payment_summary)))
-    st.plotly_chart(fig, use_container_width=True, config={"displaylogo":False})
-    a, b = st.columns(2)
-    for panel, col, title, key in ((a,"DELIVERY LOC","By delivery location","cross_location"),
-                                   (b,"FORWARDING AGENT","By forwarding agent","cross_agent")):
-        with panel:
-            st.subheader(title)
-            # Hide unassigned agents from this chart ONLY; retain their rows in f,
-            # so all KPIs, other charts, filters, and Shipment Explorer remain accurate.
-            chart_data = f
-            if col == "FORWARDING AGENT":
-                agent_names = f[col].astype("string").str.strip()
-                chart_data = f[agent_names.notna() & ~agent_names.str.casefold().isin(
-                    ["", "not specified", "nan", "none", "<na>"]
-                )]
-            d = chart_data.groupby(col, dropna=False).size().nlargest(12).sort_values().reset_index(name="Containers")
-            if not d.empty:
-                chart = px.bar(d, x="Containers", y=col, orientation="h", text="Containers", color_discrete_sequence=[BLUE])
-                chart.update_traces(textposition="outside", cliponaxis=False)
-                chart.update_layout(height=365, template="plotly_white", yaxis_title=None, xaxis_title="Containers")
-                st.plotly_chart(chart, use_container_width=True, config={"displaylogo":False})
+if active_page == "overview":
+    # Corporate management overview — compact, consistent, no donut or embedded scrollbars.
+    import plotly.graph_objects as go
 
-with risks:
+    ov_navy = "#123B61"
+    ov_blue = "#276A9B"
+    ov_teal = "#2D8790"
+    ov_gold = "#D5A44B"
+    ov_muted = "#72869B"
+    ov_grid = "#E9EFF5"
+    ov_bg = "#FFFFFF"
+
+    st.markdown("""
+    <style>
+    .ov-header{display:flex;align-items:flex-end;justify-content:space-between;
+      border-bottom:1px solid #DCE7F0;padding:6px 0 17px;margin-bottom:19px}
+    .ov-kicker{font-size:10px;letter-spacing:2px;font-weight:800;color:#397DA3;margin-bottom:7px}
+    .ov-title{font-size:27px;line-height:1.18;font-weight:780;color:#123B61;letter-spacing:-.7px}
+    .ov-subtitle{font-size:12px;color:#6D8399;margin-top:7px}
+    .ov-summary{display:flex;gap:0;align-items:center;flex-wrap:wrap;background:#fff;
+      border:1px solid #E0EAF2;border-radius:12px;padding:15px 8px;margin:0 0 19px;
+      box-shadow:0 3px 12px rgba(18,59,97,.035)}
+    .ov-stat{flex:1 1 130px;padding:3px 18px;border-right:1px solid #E6EEF4}
+    .ov-stat:last-child{border-right:none}
+    .ov-stat-label{font-size:11px;color:#6D8399;font-weight:600;margin-bottom:5px}
+    .ov-stat-value{font-size:24px;color:#123B61;font-weight:800;line-height:1.2}
+    .ov-stat-detail{font-size:10px;color:#8094A6;margin-top:4px}
+    .ov-section{font-size:15px;font-weight:750;color:#173F63;margin:7px 0 1px}
+    .ov-section-sub{font-size:11px;color:#7B8DA1;margin:0 0 8px}
+    .ov-progress-wrap{background:#fff;border:1px solid #E0EAF2;border-radius:12px;
+      padding:20px 22px 16px;margin-top:3px;box-shadow:0 3px 12px rgba(18,59,97,.035)}
+    .ov-progress-title{font-size:12px;font-weight:750;color:#173F63}
+    .ov-progress-percent{font-size:29px;font-weight:800;color:#123B61;margin-top:8px}
+    .ov-progress-track{display:flex;width:100%;height:12px;background:#E9EFF5;
+      border-radius:9px;overflow:hidden;margin:14px 0 12px}
+    .ov-progress-fill{height:100%;background:#2D8790}
+    .ov-progress-rest{height:100%;background:#D5A44B}
+    .ov-legend{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
+      color:#5D748B;font-size:11px;margin-top:8px}
+    .ov-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+    .ov-divider{border-top:1px solid #E6EDF3;margin:17px 0 12px}
+    </style>
+    <div class="ov-header"><div><div class="ov-kicker">FFM · LOGISTICS INTELLIGENCE</div>
+    <div class="ov-title">Shipment Performance Overview</div>
+    <div class="ov-subtitle">Delivery completion, shipment activity and operational distribution</div></div></div>
+    """, unsafe_allow_html=True)
+
+    total = int(f["CNTNR NO"].nunique())
+    delivered_ids = int(f.loc[f["DELIVERY GROUP"] == "Delivered", "CNTNR NO"].nunique())
+    pending_ids = max(0, total - delivered_ids)
+    completion = 100.0 * delivered_ids / total if total else 0.0
+    agents_count = int(f.loc[
+        ~f["FORWARDING AGENT"].astype(str).str.strip().str.casefold().isin(
+            ["", "not specified", "nan", "none", "<na>"]), "FORWARDING AGENT"].nunique())
+    locations_count = int(f.loc[
+        ~f["DELIVERY LOC"].astype(str).str.strip().str.casefold().isin(
+            ["", "not specified", "nan", "none", "<na>"]), "DELIVERY LOC"].nunique())
+
+    st.markdown(f"""<div class="ov-summary">
+      <div class="ov-stat"><div class="ov-stat-label">Total containers</div><div class="ov-stat-value">{total:,}</div><div class="ov-stat-detail">Selected records</div></div>
+      <div class="ov-stat"><div class="ov-stat-label">Delivered</div><div class="ov-stat-value">{delivered_ids:,}</div><div class="ov-stat-detail">{completion:.1f}% completion</div></div>
+      <div class="ov-stat"><div class="ov-stat-label">Pending delivery</div><div class="ov-stat-value">{pending_ids:,}</div><div class="ov-stat-detail">Outstanding containers</div></div>
+      <div class="ov-stat"><div class="ov-stat-label">Forwarding agents</div><div class="ov-stat-value">{agents_count:,}</div><div class="ov-stat-detail">Identified agents</div></div>
+      <div class="ov-stat"><div class="ov-stat-label">Delivery locations</div><div class="ov-stat-value">{locations_count:,}</div><div class="ov-stat-detail">Identified locations</div></div>
+    </div>""", unsafe_allow_html=True)
+
+    def ov_chart(fig, height=280):
+        fig.update_layout(
+            template="plotly_white", height=height,
+            paper_bgcolor=ov_bg, plot_bgcolor=ov_bg,
+            font=dict(family="Arial", size=11, color=ov_navy),
+            margin=dict(l=8, r=16, t=12, b=14),
+            bargap=.43,
+            hoverlabel=dict(bgcolor="#FFFFFF", font_size=11),
+        )
+        fig.update_xaxes(showline=False, zeroline=False, showgrid=False,
+                         tickfont=dict(size=10, color=ov_muted), automargin=True)
+        fig.update_yaxes(showline=False, zeroline=False, gridcolor=ov_grid,
+                         tickfont=dict(size=10, color=ov_muted), automargin=True)
+        st.plotly_chart(fig, use_container_width=True,
+                        config={"displayModeBar": False, "displaylogo": False, "responsive": True})
+
+    left, right = st.columns([1.65, 1], gap="medium")
+    with left:
+        st.markdown('<div class="ov-section">Monthly Shipment Volume</div><div class="ov-section-sub">Containers by vessel ETA month · delivered versus outstanding</div>', unsafe_allow_html=True)
+        trend = (f[f["ETA MONTH"] != "No ETA"]
+                 .groupby(["ETA MONTH", "DELIVERY GROUP"])["CNTNR NO"]
+                 .nunique().unstack(fill_value=0).sort_index())
+        if trend.empty:
+            st.caption("No valid vessel ETA dates for this selection.")
+        else:
+            months = pd.to_datetime(trend.index + "-01", errors="coerce").strftime("%b %Y")
+            fig = go.Figure()
+            for label, color in [("Delivered", ov_teal), ("Other / Pending", ov_gold)]:
+                if label in trend:
+                    fig.add_bar(name="Delivered" if label == "Delivered" else "Pending",
+                                x=months, y=trend[label].values, marker_color=color,
+                                hovertemplate="%{x}<br>%{y:,} containers<extra>" + ("Delivered" if label == "Delivered" else "Pending") + "</extra>")
+            fig.update_layout(barmode="stack", showlegend=True,
+                              legend=dict(orientation="h", y=1.16, x=1, xanchor="right",
+                                          font=dict(size=10, color=ov_muted)),
+                              margin=dict(l=5, r=8, t=32, b=12))
+            fig.update_yaxes(title=None, rangemode="tozero")
+            ov_chart(fig, 300)
+    with right:
+        st.markdown('<div class="ov-section">Delivery Completion</div><div class="ov-section-sub">Share of containers already delivered</div>', unsafe_allow_html=True)
+        st.markdown(f"""<div class="ov-progress-wrap">
+            <div class="ov-progress-title">Overall delivery progress</div>
+            <div class="ov-progress-percent">{completion:.1f}%</div>
+            <div class="ov-progress-track"><div class="ov-progress-fill" style="width:{completion:.4f}%"></div>
+            <div class="ov-progress-rest" style="width:{100-completion:.4f}%"></div></div>
+            <div class="ov-legend"><span><i class="ov-dot" style="background:#2D8790"></i>Delivered · {delivered_ids:,}</span>
+            <span><i class="ov-dot" style="background:#D5A44B"></i>Pending · {pending_ids:,}</span></div>
+            <div class="ov-divider"></div>
+            <div style="font-size:11px;color:#73899C;line-height:1.65">Delivery progress is based on unique container numbers in the selected filters.</div>
+            </div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="ov-divider"></div><div class="ov-section">Payment Status</div><div class="ov-section-sub">Container count by recorded payment status</div>', unsafe_allow_html=True)
+    pay = (f.groupby("PAYMENT STATUS")["CNTNR NO"].nunique()
+           .sort_values(ascending=True))
+    if not pay.empty:
+        colors = {"To Paid": ov_gold, "No": ov_teal, "Not specified": "#A6B7C5"}
+        fig = go.Figure(go.Bar(
+            x=pay.values, y=pay.index.tolist(), orientation="h",
+            marker_color=[colors.get(str(p), ov_blue) for p in pay.index],
+            text=[f"{n:,}" for n in pay.values], textposition="outside",
+            cliponaxis=False,
+            hovertemplate="%{y}: %{x:,} containers<extra></extra>"))
+        fig.update_layout(margin=dict(l=8, r=45, t=5, b=8))
+        fig.update_xaxes(visible=False, range=[0, max(pay.max()*1.2, 1)])
+        fig.update_yaxes(showgrid=False)
+        ov_chart(fig, max(125, 42*len(pay)+35))
+
+    st.markdown('<div class="ov-divider"></div><div class="ov-section">Operational Distribution</div><div class="ov-section-sub">Top locations and forwarding agents by container volume</div>', unsafe_allow_html=True)
+    dist_left, dist_right = st.columns(2, gap="large")
+    for panel, field, label in [
+        (dist_left, "DELIVERY LOC", "Delivery Location"),
+        (dist_right, "FORWARDING AGENT", "Forwarding Agent")
+    ]:
+        with panel:
+            st.markdown(f'<div class="ov-section" style="font-size:13px">{label}</div>', unsafe_allow_html=True)
+            names = f[field].astype("string").str.strip()
+            valid = f[names.notna() & ~names.str.casefold().isin(
+                ["", "not specified", "nan", "none", "<na>"])]
+            ranked = (valid.groupby(field)["CNTNR NO"].nunique()
+                      .nlargest(7).sort_values())
+            if ranked.empty:
+                st.caption("No identified records in this selection.")
+            else:
+                fig = go.Figure(go.Bar(
+                    x=ranked.values, y=ranked.index.tolist(), orientation="h",
+                    marker=dict(color=ov_blue, line=dict(width=0)),
+                    text=[f"{v:,}" for v in ranked.values], textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate="%{y}<br>%{x:,} containers<extra></extra>"))
+                fig.update_xaxes(visible=False, range=[0, max(ranked.max()*1.22, 1)])
+                fig.update_yaxes(showgrid=False, tickfont=dict(size=10))
+                ov_chart(fig, 290)
+
+if active_page == "risks":
     st.subheader("Forwarding Agent Performance")
 
     agent_data = f.copy()
@@ -630,7 +886,7 @@ with risks:
             "DEM TO PAY / DAYS POSITIVE", "DET TO PAY / DAYS POSITIVE", "VESSEL ETA"]
     st.dataframe(risk_rows[cols], hide_index=True, use_container_width=True, height=340)
 
-with leadtime:
+if active_page == "leadtime":
     st.subheader("Lead-Time Analysis")
 
     intervals = [
@@ -658,7 +914,7 @@ with leadtime:
         detail[label + " (days)"] = stage_days(f, start, end)
     st.dataframe(detail, hide_index=True, use_container_width=True, height=350)
 
-with comparison:
+if active_page == "comparison":
     st.subheader("Performance Comparison")
 
     dim = st.selectbox("Compare by", ["Supplier", "Forwarding agent", "Delivery location"], key="compare_dimension")
@@ -699,7 +955,7 @@ with comparison:
         plot(fig, 320)
         st.dataframe(monthly, hide_index=True, use_container_width=True)
 
-with rootcause:
+if active_page == "rootcause":
     st.subheader("Root-Cause Analysis from Remarks")
 
     import re
@@ -731,7 +987,7 @@ with rootcause:
         st.dataframe(causes[causes["Category"] == selected_cause], hide_index=True,
                      use_container_width=True, height=340)
 
-with records:
+if active_page == "records":
     st.subheader("Shipment explorer")
 
     show = ["SUPPLIER", "BL NO", "CNTNR NO", "PO NO", "STATUS", "PAYMENT STATUS",
