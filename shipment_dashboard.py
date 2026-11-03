@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -1098,4 +1099,3 @@ if active_page == "records":
     st.dataframe(f[show], use_container_width=True, hide_index=True, height=440)
     st.download_button("Export filtered data (CSV)", data=f[show].to_csv(index=False).encode("utf-8-sig"),
                        file_name="shipment_filtered.csv", mime="text/csv")
-
