@@ -118,6 +118,74 @@ button[aria-label="Collapse sidebar"] {display:none!important;}
 </style>
 """, unsafe_allow_html=True)
 
+# Subtle AI-inspired motion design: visual polish only, no artificial intelligence claims.
+st.markdown("""
+<style>
+:root { --motion-navy:#10365e; --motion-cyan:#53bdd7; --motion-green:#238b57; }
+/* Gentle staggered entrance on each selected page. */
+@keyframes motion-enter {from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}
+@keyframes motion-sheen {from{transform:translateX(-130%) skewX(-20deg)}to{transform:translateX(280%) skewX(-20deg)}}
+@keyframes motion-grow {from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes motion-pulse {0%,100%{box-shadow:0 0 0 0 rgba(53,163,198,.18)}50%{box-shadow:0 0 0 7px rgba(53,163,198,0)}}
+@keyframes motion-float {0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes motion-scan {0%{left:-35%}100%{left:120%}}
+/* Make navigation feel responsive while keeping its position unchanged. */
+[data-testid="stSidebar"] [role="radiogroup"] label {transition:background-color .22s ease,border-color .22s ease,transform .22s ease!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:hover {transform:translateX(3px);background:#eaf5fc!important;border-color:#d0e6f5!important}
+[data-testid="stSidebar"] [role="radiogroup"] label:has(input:checked) {box-shadow:inset 3px 0 0 #2794c3,0 2px 9px rgba(19,81,123,.06)}
+/* Small lift, never rotating/flashing or distracting. */
+[data-testid="stPlotlyChart"],div[data-testid="stMetric"] {transition:box-shadow .24s ease,transform .24s ease,border-color .24s ease}
+[data-testid="stPlotlyChart"]:hover,div[data-testid="stMetric"]:hover {transform:translateY(-2px);box-shadow:0 10px 24px rgba(13,60,100,.11)!important;border-color:#c8e1ed!important}
+/* Corporate header: very light data-grid and scanning glow. */
+.ship-hero::before {content:"";position:absolute;inset:0;z-index:1;pointer-events:none;opacity:.18;
+ background-image:linear-gradient(rgba(161,225,247,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(161,225,247,.18) 1px,transparent 1px);
+ background-size:42px 42px;mask-image:linear-gradient(90deg,transparent 22%,black 100%)}
+.ship-hero::after {content:"";position:absolute;top:0;bottom:0;left:-35%;width:30%;z-index:2;pointer-events:none;
+ background:linear-gradient(90deg,transparent,rgba(170,228,249,.09),transparent);animation:motion-scan 18s linear infinite}
+.ship-moon {animation:motion-pulse 5s ease-in-out infinite}
+.ship-titlebar {animation:motion-enter .65s ease both}
+/* Management overview entrance and animated completion track. */
+.ov-header {animation:motion-enter .45s ease both}
+.ov-summary {animation:motion-enter .6s .08s ease both}
+.ov-stat {transition:background-color .25s ease}
+.ov-stat:hover {background:#f6fbff}
+.ov-progress-wrap {animation:motion-enter .65s .12s ease both;overflow:hidden}
+.ov-progress-fill,.ov-progress-rest {transform-origin:left center;animation:motion-grow 1.1s .18s cubic-bezier(.2,.8,.2,1) both}
+.ov-progress-track {position:relative}
+.ov-progress-track::after {content:"";position:absolute;inset:0 auto 0 0;width:30%;pointer-events:none;
+ background:linear-gradient(90deg,transparent,rgba(255,255,255,.32),transparent);animation:motion-sheen 4.5s 1s ease-in-out infinite}
+/* Noticeable but polished motion for the entire analytics experience. */
+@keyframes ocean-chart-reveal {from{clip-path:inset(0 100% 0 0);opacity:.6}to{clip-path:inset(0 0 0 0);opacity:1}}
+@keyframes ocean-rise {from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ocean-bar-wipe {from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+@keyframes ocean-glow {0%,100%{filter:drop-shadow(0 0 0 rgba(36,150,180,0))}50%{filter:drop-shadow(0 0 5px rgba(36,150,180,.22))}}
+@keyframes ocean-ship-bob {0%,100%{translate:0 0}50%{translate:0 -4px}}
+/* Plotly itself stays fully interactive; reveal the chart without replacing Plotly. */
+[data-testid="stPlotlyChart"] {animation:ocean-chart-reveal 1.15s cubic-bezier(.16,.9,.2,1) both;transform-origin:left center}
+[data-testid="stPlotlyChart"]:nth-of-type(2n) {animation-delay:.12s}
+[data-testid="stPlotlyChart"]:nth-of-type(3n) {animation-delay:.2s}
+.ov-stat {animation:ocean-rise .7s cubic-bezier(.2,.85,.2,1) both}
+.ov-stat:nth-child(1) {animation-delay:.08s}
+.ov-stat:nth-child(2) {animation-delay:.18s}
+.ov-stat:nth-child(3) {animation-delay:.28s}
+.ov-stat:nth-child(4) {animation-delay:.38s}
+.ov-stat:nth-child(5) {animation-delay:.48s}
+.ov-progress-track {animation:ocean-glow 3s ease-in-out 2}
+.ov-progress-fill {animation:motion-grow 1.45s .25s cubic-bezier(.15,.85,.2,1) both}
+.ov-progress-rest {animation:motion-grow 1.45s .4s cubic-bezier(.15,.85,.2,1) both}
+/* Keep movement smooth and avoid page layout shifts. */
+[data-testid="stDataFrame"] {animation:ocean-rise .65s .12s ease-out both}
+[data-testid="stMetric"] {animation:ocean-rise .6s ease-out both}
+/* Reduce motion for accessibility, including the pre-existing animated ships. */
+@media(prefers-reduced-motion:reduce){
+ .ship-hero::after,.ship-moon,.ship-titlebar,.ov-header,.ov-summary,.ov-progress-wrap,
+ .ov-progress-fill,.ov-progress-rest,.ov-progress-track::after, .ov-stat,
+ [data-testid="stPlotlyChart"],[data-testid="stDataFrame"],[data-testid="stMetric"] {animation:none!important}
+ [data-testid="stPlotlyChart"],div[data-testid="stMetric"],[data-testid="stSidebar"] [role="radiogroup"] label {transition:none!important;transform:none!important}
+}
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_data(show_spinner="Reading shipment workbook...")
 def read_workbook(data: bytes) -> pd.DataFrame:
     excel = pd.ExcelFile(io.BytesIO(data))
@@ -530,15 +598,20 @@ if active_page == "monitor":
             overall_status = "Awaiting completion of all containers"
         components.html(f"""<!doctype html><html><head><meta charset="utf-8"><style>
           html,body{{margin:0;padding:0;background:transparent;font-family:Arial,sans-serif;}}
+          @keyframes track-reveal{{from{{clip-path:inset(0 100% 0 0)}}to{{clip-path:inset(0 0 0 0)}}}}
+          @keyframes ship-appear{{from{{opacity:0;transform:translate(-50%,-7px)}}to{{opacity:1;transform:translate(-50%,0)}}}}
+          @media(prefers-reduced-motion:reduce){{.vessel-track-fill,.vessel-ship{{animation:none!important;transition:none!important}}}}
           .vessel-journey{{position:relative;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
             margin:10px 0 0;padding:10px 0 0;background:white;border:1px solid #dce7f2;
             border-radius:14px;box-shadow:0 5px 20px #173b5910;overflow:hidden}}
           .vessel-track{{position:absolute;top:132px;left:12.5%;width:75%;height:3px;
             background:#c8d9e7;z-index:0}}
-          .vessel-track-fill{{height:100%;width:{track_fill:.3f}%;background:#155caa;transition:width .6s ease}}
+          .vessel-track-fill{{height:100%;width:{track_fill:.3f}%;background:#155caa;transition:width .8s ease;animation:track-reveal 1s ease-out both}}
+          @keyframes vessel-line-shimmer{{0%{{opacity:.78}}50%{{opacity:1}}100%{{opacity:.78}}}}
+          .vessel-track-fill{{animation:track-reveal 1.25s cubic-bezier(.16,.85,.2,1) both,vessel-line-shimmer 3.5s ease-in-out 1.25s infinite}}
           .vessel-phase{{position:relative;text-align:center;padding:160px 5px 24px;z-index:1}}
           .vessel-ship{{position:absolute;top:60px;left:{ship_position:.3f}%;
-            transform:translateX(-50%);z-index:5;line-height:0;transition:left .7s ease}}
+            transform:translateX(-50%);z-index:5;line-height:0;transition:left .8s ease;animation:ship-appear .7s ease-out both}}
           .vessel-dot{{position:absolute;top:124px;left:50%;transform:translateX(-50%);
             height:16px;width:16px;background:white;border:3px solid #8daecb;
             border-radius:50%;z-index:2;box-sizing:border-box}}
@@ -638,8 +711,8 @@ if active_page == "overview":
 
     ov_navy = "#123B61"
     ov_blue = "#276A9B"
-    ov_teal = "#2D8790"
-    ov_gold = "#D5A44B"
+    ov_teal = "#238B57"  # Delivered: green
+    ov_gold = "#E5AC38"  # Pending: amber
     ov_muted = "#72869B"
     ov_grid = "#E9EFF5"
     ov_bg = "#FFFFFF"
@@ -659,6 +732,8 @@ if active_page == "overview":
     .ov-stat-label{font-size:11px;color:#6D8399;font-weight:600;margin-bottom:5px}
     .ov-stat-value{font-size:24px;color:#123B61;font-weight:800;line-height:1.2}
     .ov-stat-detail{font-size:10px;color:#8094A6;margin-top:4px}
+    .ov-stat-delivered .ov-stat-value{color:#238B57}
+    .ov-stat-pending .ov-stat-value{color:#B8780D}
     .ov-section{font-size:15px;font-weight:750;color:#173F63;margin:7px 0 1px}
     .ov-section-sub{font-size:11px;color:#7B8DA1;margin:0 0 8px}
     .ov-progress-wrap{background:#fff;border:1px solid #E0EAF2;border-radius:12px;
@@ -667,8 +742,8 @@ if active_page == "overview":
     .ov-progress-percent{font-size:29px;font-weight:800;color:#123B61;margin-top:8px}
     .ov-progress-track{display:flex;width:100%;height:12px;background:#E9EFF5;
       border-radius:9px;overflow:hidden;margin:14px 0 12px}
-    .ov-progress-fill{height:100%;background:#2D8790}
-    .ov-progress-rest{height:100%;background:#D5A44B}
+    .ov-progress-fill{height:100%;background:#238B57}
+    .ov-progress-rest{height:100%;background:#E5AC38}
     .ov-legend{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;
       color:#5D748B;font-size:11px;margin-top:8px}
     .ov-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
@@ -692,8 +767,8 @@ if active_page == "overview":
 
     st.markdown(f"""<div class="ov-summary">
       <div class="ov-stat"><div class="ov-stat-label">Total containers</div><div class="ov-stat-value">{total:,}</div><div class="ov-stat-detail">Selected records</div></div>
-      <div class="ov-stat"><div class="ov-stat-label">Delivered</div><div class="ov-stat-value">{delivered_ids:,}</div><div class="ov-stat-detail">{completion:.1f}% completion</div></div>
-      <div class="ov-stat"><div class="ov-stat-label">Pending delivery</div><div class="ov-stat-value">{pending_ids:,}</div><div class="ov-stat-detail">Outstanding containers</div></div>
+      <div class="ov-stat ov-stat-delivered"><div class="ov-stat-label">Delivered</div><div class="ov-stat-value">{delivered_ids:,}</div><div class="ov-stat-detail">{completion:.1f}% completion</div></div>
+      <div class="ov-stat ov-stat-pending"><div class="ov-stat-label">Pending delivery</div><div class="ov-stat-value">{pending_ids:,}</div><div class="ov-stat-detail">Outstanding containers</div></div>
       <div class="ov-stat"><div class="ov-stat-label">Forwarding agents</div><div class="ov-stat-value">{agents_count:,}</div><div class="ov-stat-detail">Identified agents</div></div>
       <div class="ov-stat"><div class="ov-stat-label">Delivery locations</div><div class="ov-stat-value">{locations_count:,}</div><div class="ov-stat-detail">Identified locations</div></div>
     </div>""", unsafe_allow_html=True)
@@ -743,24 +818,24 @@ if active_page == "overview":
             <div class="ov-progress-percent">{completion:.1f}%</div>
             <div class="ov-progress-track"><div class="ov-progress-fill" style="width:{completion:.4f}%"></div>
             <div class="ov-progress-rest" style="width:{100-completion:.4f}%"></div></div>
-            <div class="ov-legend"><span><i class="ov-dot" style="background:#2D8790"></i>Delivered · {delivered_ids:,}</span>
-            <span><i class="ov-dot" style="background:#D5A44B"></i>Pending · {pending_ids:,}</span></div>
+            <div class="ov-legend"><span><i class="ov-dot" style="background:#238B57"></i>Delivered · {delivered_ids:,}</span>
+            <span><i class="ov-dot" style="background:#E5AC38"></i>Pending · {pending_ids:,}</span></div>
             <div class="ov-divider"></div>
             <div style="font-size:11px;color:#73899C;line-height:1.65">Delivery progress is based on unique container numbers in the selected filters.</div>
             </div>""", unsafe_allow_html=True)
 
-    st.markdown('<div class="ov-divider"></div><div class="ov-section">Payment Status</div><div class="ov-section-sub">Container count by recorded payment status</div>', unsafe_allow_html=True)
+    st.markdown('<div class="ov-divider"></div><div class="ov-section">Payment Status</div><div class="ov-section-sub">Payment status by container · amber: To Paid · blue: No · light grey: Not specified</div>', unsafe_allow_html=True)
     pay = (f.groupby("PAYMENT STATUS")["CNTNR NO"].nunique()
            .sort_values(ascending=True))
     if not pay.empty:
-        colors = {"To Paid": ov_gold, "No": ov_teal, "Not specified": "#A6B7C5"}
+        colors = {"To Paid": "#E8A547", "No": "#347A9F", "Not specified": "#C3CFD9"}
         fig = go.Figure(go.Bar(
             x=pay.values, y=pay.index.tolist(), orientation="h",
-            marker_color=[colors.get(str(p), ov_blue) for p in pay.index],
+            marker=dict(color=[colors.get(str(p), "#C3CFD9") for p in pay.index], line=dict(width=0)),
             text=[f"{n:,}" for n in pay.values], textposition="outside",
             cliponaxis=False,
             hovertemplate="%{y}: %{x:,} containers<extra></extra>"))
-        fig.update_layout(margin=dict(l=8, r=45, t=5, b=8))
+        fig.update_layout(margin=dict(l=8, r=45, t=8, b=8), bargap=0.42)
         fig.update_xaxes(visible=False, range=[0, max(pay.max()*1.2, 1)])
         fig.update_yaxes(showgrid=False)
         ov_chart(fig, max(125, 42*len(pay)+35))
@@ -860,7 +935,15 @@ if active_page == "risks":
             xaxis_title="Number of containers",
             yaxis_title=None,
             legend_title_text="",
-            margin=dict(l=10, r=65, t=25, b=30),
+            legend=dict(
+                orientation="h",
+                x=0, xanchor="left",
+                y=1.02, yanchor="bottom",
+                font=dict(size=12, color="#294765"),
+                bgcolor="rgba(255,255,255,0)",
+                traceorder="normal",
+            ),
+            margin=dict(l=10, r=65, t=80, b=30),
         )
         st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
